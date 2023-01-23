@@ -1,0 +1,106 @@
+import argparse
+import concurrent.futures
+import itertools
+import logging
+
+import matplotlib.pyplot as plt
+import osmnx as ox
+
+logging.basicConfig(level=logging.INFO)
+import multiprocessing as mp
+
+from shapely.geometry import MultiPolygon
+
+
+def is_route_straight(route, G, tolerance=7):
+    first_point = route[0]
+    last_point = route[-1]
+    route_bearing = ox.bearing.calculate_bearing(
+        G.nodes[first_point]["y"],
+        G.nodes[first_point]["x"],
+        G.nodes[last_point]["y"],
+        G.nodes[last_point]["x"],
+    )
+    for i in range(1, len(route) - 1):
+        point = route[i]
+        bearing = ox.bearing.calculate_bearing(
+            G.nodes[first_point]["y"],
+            G.nodes[first_point]["x"],
+            G.nodes[point]["y"],
+            G.nodes[point]["x"],
+        )
+        if abs(bearing - route_bearing) > tolerance:
+            return False
+    return True
+
+def main():
+    argParser = argparse.ArgumentParser()
+    argParser.add_argument("-l", "--location", help="Location to straight line")
+    args = argParser.parse_args()
+
+    place = args.location
+    logging.info("Generating strightline for %s", place)
+    gdf = ox.geocode_to_gdf(place)
+    G = ox.graph_from_place(place, network_type="walk", retain_all=False)
+
+    if type(gdf.geometry[0]) == MultiPolygon:
+        exteriror = gdf.geometry[0].geoms[0]
+    else:
+        exteriror = gdf.geometry[0]
+
+    # Find the closest nodes to the boundary of the place
+    closest_to_edge = set(ox.nearest_nodes(G, *exteriror.exterior.coords.xy))
+    logging.info("Found the closest points to the edge count is %s", len(closest_to_edge))
+    routes = []
+    calculation = list(itertools.combinations(closest_to_edge, 2))
+    threads = mp.cpu_count() - 1
+    logging.info("Total Calculations %s on %s cores", len(calculation), threads)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=mp.cpu_count() - 1) as e:
+        fut = [
+            e.submit(ox.shortest_path, G, x[0], x[1], weight="length") for x in calculation
+        ]
+        for i, r in enumerate(concurrent.futures.as_completed(fut)):
+            logging.info(
+                "Calculated the shortest path: %s of total calculation: %s",
+                i,
+                len(calculation),
+            )
+            if is_route_straight(route = r.result(), G=G):
+                routes.append(r.result())
+
+    routes.sort(
+        key=lambda route: sum(
+            ox.utils_graph.get_route_edge_attributes(G, route, attribute="length")
+        ),
+        reverse=True,
+    )
+    display(routes[:3],G,gdf)
+    write_gpx(routes[:3], place, G)
+
+def display(routes, G, gdf):
+    logging.info("Sorted routes by straighntess number: %s", len(routes))
+    fig, ax = ox.plot_graph_routes(
+        G, routes, route_colors=['r','y','g'], route_linewidth=1, show=False, close=False
+    )
+    gdf.plot(ax=ax, fc="k", ec="#666666", lw=1, alpha=1, zorder=-1)
+    margin = 0.02
+    west, south, east, north = gdf.unary_union.bounds
+    margin_ns = (north - south) * margin
+    margin_ew = (east - west) * margin
+    ax.set_ylim((south - margin_ns, north + margin_ns))
+    ax.set_xlim((west - margin_ew, east + margin_ew))
+    plt.show()
+
+def write_gpx(routes, place, G):
+    from gpxpy.gpx import GPX, GPXTrack, GPXTrackSegment, GPXTrackPoint
+    for i, route in enumerate(routes):
+        gpx = GPX()
+        gpx_track = GPXTrack()
+        gpx.tracks.append(gpx_track)
+        gpx_segment = GPXTrackSegment()
+        gpx_track.segments.append(gpx_segment)
+        gpx_segment.points.extend([GPXTrackPoint(G.nodes[point]["y"], G.nodes[point]["x"]) for point in route])
+        with open(f"{place.replace(' ','_')}_{i}_route.gpx", "w") as f:
+            f.write(gpx.to_xml())
+if __name__ == "__main__":
+    main()

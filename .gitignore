@@ -6,6 +6,10 @@ __pycache__/
 # C extensions
 *.so
 
+#Cache
+cache
+#GPX files
+*.gpx
 # Distribution / packaging
 .Python
 build/
