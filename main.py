@@ -138,7 +138,7 @@ def write_gpx(routes, place, G):
         gpx_segment.points.extend(
             [GPXTrackPoint(G.nodes[point]["y"], G.nodes[point]["x"]) for point in route]
         )
-        with open(f"{place.replace(' ','_')}_{i}_route.gpx", "w") as f:
+        with open(f"{place.strip().replace(' ','_')}_{i}_route.gpx", "w") as f:
             f.write(gpx.to_xml())
 if __name__ == "__main__":
     main()
