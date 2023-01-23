@@ -5,7 +5,8 @@ Generate a straight path
 pip install -r requirements
 python main.py -l "Bala, Wales"
 ```
-
+-e will output the edge nodes (start / finish nodes)
+-t [bike, drive, walk, all] (mode of transport)
 ## Outputs
 It will generate a nice plot
 ![Alt text](/screenshots/Llandderfel.png "Plot Llandderfel")
