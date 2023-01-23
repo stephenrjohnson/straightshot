@@ -6,7 +6,7 @@ pip install -r requirements
 python main.py -l "Bala, Wales"
 ```
 
-##Outputs
+## Outputs
 It will generate a nice plot
 ![Alt text](/screenshots/Bala.png "Plot")
 
