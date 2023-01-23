@@ -3,14 +3,16 @@ import concurrent.futures
 import itertools
 import logging
 import os
+
 import matplotlib.pyplot as plt
 import osmnx as ox
 
 logging.basicConfig(level=logging.INFO)
 import multiprocessing as mp
 
-from shapely.geometry import MultiPolygon, Point
 from gpxpy.gpx import GPX, GPXTrack, GPXTrackPoint, GPXTrackSegment
+from shapely.geometry import MultiPolygon, Point
+
 
 def display(routes, G, gdf, edgenodes, displyedgenodes, place):
     logging.info("Sorted routes by straighntess number: %s", len(routes))
@@ -36,6 +38,7 @@ def display(routes, G, gdf, edgenodes, displyedgenodes, place):
     ax.set_ylim((south - margin_ns, north + margin_ns))
     ax.set_xlim((west - margin_ew, east + margin_ew))
     plt.show()
+
 
 def is_route_straight(route, G, tolerance=9):
     first_point = route[0]
@@ -65,7 +68,7 @@ def main():
     logging.info("Generating strightline for %s", place)
     ox.config(log_console=True)
     gdf = ox.geocode_to_gdf(place)
-    G = ox.graph_from_place(place, network_type="walk", retain_all=False)
+    G = ox.graph_from_place(place, network_type=args.type, retain_all=False)
 
     closest_to_edge = work_out_edges(G, gdf)
 
@@ -96,6 +99,7 @@ def main():
     display(routes[:3], G, gdf, closest_to_edge, args.display_edges, place)
     write_gpx(routes[:3], place, G)
 
+
 def parse_args():
     argParser = argparse.ArgumentParser()
     argParser.add_argument("-l", "--location", help="Location to straight line")
@@ -105,9 +109,17 @@ def parse_args():
         help="Display the edge nodes we have found",
         action="store_true",
     )
+    argParser.add_argument(
+        "-t",
+        "--type",
+        choices=["all", "bike", "drive", "drive_service", "bike"],
+        default="walk",
+        help="What type of route, bike, drive, walk, all, drive_service",
+    )
     return argParser.parse_args()
 
-def work_out_edges(G, gdf, edgebuffer = 0.002):
+
+def work_out_edges(G, gdf, edgebuffer=0.002):
     if type(gdf.geometry[0]) == MultiPolygon:
         exteriror = gdf.geometry[0].geoms[0]
     else:
@@ -126,12 +138,14 @@ def work_out_edges(G, gdf, edgebuffer = 0.002):
     )
     if len(closest_to_edge) > 5:
         return closest_to_edge
-    
+
     logging.info("Doubling buffer to find more at end")
-    return work_out_edges(G, gdf, edgebuffer=edgebuffer*2)
+    return work_out_edges(G, gdf, edgebuffer=edgebuffer * 2)
+
 
 def write_gpx(routes, place, G):
-    if not os.path.exists("gpx"): os.makedirs("gpx")
+    if not os.path.exists("gpx"):
+        os.makedirs("gpx")
     for i, route in enumerate(routes):
         gpx = GPX()
         gpx_track = GPXTrack()
@@ -143,5 +157,7 @@ def write_gpx(routes, place, G):
         )
         with open(f"gpx/{place.strip().replace(' ','_')}_{i}_route.gpx", "w") as f:
             f.write(gpx.to_xml())
+
+
 if __name__ == "__main__":
     main()
