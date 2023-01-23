@@ -12,7 +12,7 @@ import multiprocessing as mp
 from shapely.geometry import MultiPolygon, Point
 from gpxpy.gpx import GPX, GPXTrack, GPXTrackPoint, GPXTrackSegment
 
-def display(routes, G, gdf, edgenodes, displyedgenodes):
+def display(routes, G, gdf, edgenodes, displyedgenodes, place):
     logging.info("Sorted routes by straighntess number: %s", len(routes))
     fig, ax = ox.plot_graph_routes(
         G,
@@ -22,6 +22,7 @@ def display(routes, G, gdf, edgenodes, displyedgenodes):
         show=False,
         close=False,
     )
+    fig.canvas.manager.set_window_title(place)
     gdf.plot(ax=ax, fc="k", ec="#666666", lw=1, alpha=1, zorder=-1)
     if displyedgenodes:
         subG = G.subgraph(edgenodes)
@@ -92,7 +93,7 @@ def main():
         ),
         reverse=True,
     )
-    display(routes[:3], G, gdf, closest_to_edge, args.display_edges)
+    display(routes[:3], G, gdf, closest_to_edge, args.display_edges, place)
     write_gpx(routes[:3], place, G)
 
 def parse_args():
@@ -140,7 +141,7 @@ def write_gpx(routes, place, G):
         gpx_segment.points.extend(
             [GPXTrackPoint(G.nodes[point]["y"], G.nodes[point]["x"]) for point in route]
         )
-        with open(f"{place.strip().replace(' ','_')}_{i}_route.gpx", "w") as f:
+        with open(f"gpx/{place.strip().replace(' ','_')}_{i}_route.gpx", "w") as f:
             f.write(gpx.to_xml())
 if __name__ == "__main__":
     main()
