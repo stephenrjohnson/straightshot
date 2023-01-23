@@ -2,7 +2,7 @@ import argparse
 import concurrent.futures
 import itertools
 import logging
-
+import os
 import matplotlib.pyplot as plt
 import osmnx as ox
 
@@ -62,6 +62,7 @@ def main():
     args = parse_args()
     place = args.location
     logging.info("Generating strightline for %s", place)
+    ox.config(log_console=True)
     gdf = ox.geocode_to_gdf(place)
     G = ox.graph_from_place(place, network_type="walk", retain_all=False)
 
@@ -129,6 +130,7 @@ def work_out_edges(G, gdf, edgebuffer = 0.002):
     return work_out_edges(G, gdf, edgebuffer=edgebuffer*2)
 
 def write_gpx(routes, place, G):
+    if not os.path.exists("gpx"): os.makedirs("gpx")
     for i, route in enumerate(routes):
         gpx = GPX()
         gpx_track = GPXTrack()
