@@ -115,10 +115,8 @@ def main():
     else:
         G = ox.graph_from_place(place, network_type=args.type, retain_all=False)
         cache_graph(G, filename)
-    closest_to_edge = set(work_out_edges(G, gdf, args.buffer))
-
+    closest_to_edge = work_out_edges(G, gdf, args.buffer)
     routes = calulate_routes(closest_to_edge, G)
-
     routes.sort(
         key=lambda route: sum(
             ox.utils_graph.get_route_edge_attributes(G, route, attribute="length")
@@ -176,7 +174,7 @@ def work_out_edges(G, gdf, edgebuffer):
     # Find the closest nodes to the boundary of the place
     # closest_to_edge = set(ox.nearest_nodes(G, *exteriror.exterior.coords.xy))
     buffer = exteriror.exterior.buffer(edgebuffer)
-    closest_to_edge = []
+    closest_to_edge = set()
     with concurrent.futures.ThreadPoolExecutor(max_workers=mp.cpu_count() - 1) as e:
         fut = [
             e.submit(close_to_edge, node, data, buffer)
@@ -185,12 +183,12 @@ def work_out_edges(G, gdf, edgebuffer):
         for i, r in enumerate(concurrent.futures.as_completed(fut)):
             logging.info("Calculated close to edge %s total %s", i, len(fut))
             if r.result():
-                closest_to_edge.append(r.result())
+                closest_to_edge.add(r.result())
     logging.info(
         "Found the closest points to the edge count is %s", len(closest_to_edge)
     )
     if len(closest_to_edge) > 5:
-        return set(closest_to_edge)
+        return closest_to_edge
     else:
         logging.info("Doubling buffer to find more at end")
         return work_out_edges(G, gdf, edgebuffer=edgebuffer * 2)
