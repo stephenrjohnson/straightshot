@@ -69,8 +69,7 @@ def main():
     ox.config(log_console=True)
     gdf = ox.geocode_to_gdf(place)
     G = ox.graph_from_place(place, network_type=args.type, retain_all=False)
-
-    closest_to_edge = work_out_edges(G, gdf)
+    closest_to_edge = work_out_edges(G, gdf, args.buffer)
 
     routes = []
     calculation = list(itertools.combinations(set(closest_to_edge), 2))
@@ -96,7 +95,8 @@ def main():
         ),
         reverse=True,
     )
-    display(routes[:3], G, gdf, closest_to_edge, args.display_edges, place)
+    if args.np:
+        display(routes[:3], G, gdf, closest_to_edge, args.display_edges, place)
     write_gpx(routes[:3], place, G)
 
 
@@ -116,10 +116,28 @@ def parse_args():
         default="walk",
         help="What type of route, bike, drive, walk, all, drive_service",
     )
+    argParser.add_argument(
+        "-b",
+        "--buffer",
+        default=0.002,
+        type=float,
+        help="Distance from end for edge nodes",
+    )
+    argParser.add_argument(
+        "--np",
+        action="store_false",
+    )
     return argParser.parse_args()
 
 
-def work_out_edges(G, gdf, edgebuffer=0.002):
+def close_to_edge(node, data, buffer):
+    if Point(data["x"], data["y"]).within(buffer):
+        return node
+    else:
+        return None
+
+
+def work_out_edges(G, gdf, edgebuffer):
     if type(gdf.geometry[0]) == MultiPolygon:
         exteriror = gdf.geometry[0].geoms[0]
     else:
@@ -128,19 +146,24 @@ def work_out_edges(G, gdf, edgebuffer=0.002):
     # Find the closest nodes to the boundary of the place
     # closest_to_edge = set(ox.nearest_nodes(G, *exteriror.exterior.coords.xy))
     buffer = exteriror.exterior.buffer(edgebuffer)
-    closest_to_edge = set(
-        node
-        for node, data in G.nodes(data=True)
-        if buffer.intersects(Point(data["x"], data["y"]))
-    )
+    closest_to_edge = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=mp.cpu_count() - 1) as e:
+        fut = [
+            e.submit(close_to_edge, node, data, buffer)
+            for node, data in G.nodes(data=True)
+        ]
+        for i, r in enumerate(concurrent.futures.as_completed(fut)):
+            logging.info("Calculated close to edge %s total %s", i, len(fut))
+            if r.result():
+                closest_to_edge.append(r.result())
     logging.info(
         "Found the closest points to the edge count is %s", len(closest_to_edge)
     )
     if len(closest_to_edge) > 5:
-        return closest_to_edge
-
-    logging.info("Doubling buffer to find more at end")
-    return work_out_edges(G, gdf, edgebuffer=edgebuffer * 2)
+        return set(closest_to_edge)
+    else:
+        logging.info("Doubling buffer to find more at end")
+        return work_out_edges(G, gdf, edgebuffer=edgebuffer * 2)
 
 
 def write_gpx(routes, place, G):
