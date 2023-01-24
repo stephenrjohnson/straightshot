@@ -4,6 +4,7 @@ import itertools
 import logging
 import os
 from functools import partial
+
 import matplotlib.pyplot as plt
 import osmnx as ox
 
@@ -39,12 +40,14 @@ def display(routes, G, gdf, edgenodes, displyedgenodes, place):
     ax.set_xlim((west - margin_ew, east + margin_ew))
     plt.show()
 
-def shortest_staightest(G, x , weight="length", tolerance = 9):
+
+def shortest_staightest(G, x, weight="length", tolerance=9):
     route = ox.shortest_path(G, x[0], x[1], weight)
     if is_route_straight(route, G, tolerance):
         return route
     else:
         return None
+
 
 def is_route_straight(route, G, tolerance):
     first_point = route[0]
@@ -67,11 +70,13 @@ def is_route_straight(route, G, tolerance):
             return False
     return True
 
+
 def cache_graph(G, filename):
     if not os.path.exists("data"):
         os.makedirs("data")
-    logging.info("Caching graph to %s",filename)
+    logging.info("Caching graph to %s", filename)
     ox.save_graphml(G, filename)
+
 
 def load_cached_graph(filename):
     if os.path.isfile(filename):
@@ -79,7 +84,8 @@ def load_cached_graph(filename):
         return ox.load_graphml(filename)
     else:
         return None
-     
+
+
 def main():
     args = parse_args()
     place = args.location.strip()
@@ -88,21 +94,23 @@ def main():
     ox.config(log_console=True)
     gdf = ox.geocode_to_gdf(place)
     if os.path.isfile(filename):
-        G = load_cached_graph(filename) 
+        G = load_cached_graph(filename)
     else:
         G = ox.graph_from_place(place, network_type=args.type, retain_all=False)
         cache_graph(G, filename)
     closest_to_edge = set(work_out_edges(G, gdf, args.buffer))
 
     routes = []
-    threads= mp.cpu_count() - 1
+    threads = mp.cpu_count() - 1
     calculations = list(itertools.combinations(closest_to_edge, 2))
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as e:
         shortest_straightest_partial = partial(shortest_staightest, G)
-        for count, route in enumerate(e.map(shortest_straightest_partial, calculations)):
+        for count, route in enumerate(
+            e.map(shortest_straightest_partial, calculations)
+        ):
             if route:
                 routes.append(route)
-            logging.info("Completed %s of %s",count,len(calculations))
+            logging.info("Completed %s of %s", count, len(calculations))
 
     routes.sort(
         key=lambda route: sum(
