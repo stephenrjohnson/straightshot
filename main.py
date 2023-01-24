@@ -3,7 +3,6 @@ import concurrent.futures
 import itertools
 import logging
 import os
-from functools import partial
 
 import matplotlib.pyplot as plt
 import osmnx as ox
@@ -86,6 +85,24 @@ def load_cached_graph(filename):
         return None
 
 
+def calulate_routes(closest_to_edge, G):
+    routes = []
+    calculation = list(itertools.combinations(set(closest_to_edge), 2))
+    threads = mp.cpu_count() - 1
+    logging.info("Total Calculations %s on %s cores", len(calculation), threads)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=mp.cpu_count() - 1) as e:
+        fut = [e.submit(shortest_staightest, G, x) for x in calculation]
+        for i, r in enumerate(concurrent.futures.as_completed(fut)):
+            logging.info(
+                "Calculated the shortest path: %s of total calculation: %s",
+                i,
+                len(calculation),
+            )
+            if r.result():
+                routes.append(r.result())
+    return routes
+
+
 def main():
     args = parse_args()
     place = args.location.strip()
@@ -100,17 +117,7 @@ def main():
         cache_graph(G, filename)
     closest_to_edge = set(work_out_edges(G, gdf, args.buffer))
 
-    routes = []
-    threads = mp.cpu_count() - 1
-    calculations = list(itertools.combinations(closest_to_edge, 2))
-    with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as e:
-        shortest_straightest_partial = partial(shortest_staightest, G)
-        for count, route in enumerate(
-            e.map(shortest_straightest_partial, calculations)
-        ):
-            if route:
-                routes.append(route)
-            logging.info("Completed %s of %s", count, len(calculations))
+    routes = calulate_routes(closest_to_edge, G)
 
     routes.sort(
         key=lambda route: sum(
