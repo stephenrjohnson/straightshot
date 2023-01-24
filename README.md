@@ -1,4 +1,5 @@
 # straightshot
+A simple python script to work out the straightest way to walk / drive / bike accorss an area stick to openstreet maps provided road information etc. 
 ## Usage
 Generate a straight path
 ```bash
