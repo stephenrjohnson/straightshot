@@ -3,7 +3,7 @@ import concurrent.futures
 import itertools
 import logging
 import os
-
+from functools import partial
 import matplotlib.pyplot as plt
 import osmnx as ox
 
@@ -39,8 +39,14 @@ def display(routes, G, gdf, edgenodes, displyedgenodes, place):
     ax.set_xlim((west - margin_ew, east + margin_ew))
     plt.show()
 
+def shortest_staightest(G, x , weight="length", tolerance = 9):
+    route = ox.shortest_path(G, x[0], x[1], weight)
+    if is_route_straight(route, G, tolerance):
+        return route
+    else:
+        return None
 
-def is_route_straight(route, G, tolerance=9):
+def is_route_straight(route, G, tolerance):
     first_point = route[0]
     last_point = route[-1]
     route_bearing = ox.bearing.calculate_bearing(
@@ -64,12 +70,12 @@ def is_route_straight(route, G, tolerance=9):
 def cache_graph(G, filename):
     if not os.path.exists("data"):
         os.makedirs("data")
-    logging.info("Caching graph to f{filename}")
+    logging.info("Caching graph to %s",filename)
     ox.save_graphml(G, filename)
 
 def load_cached_graph(filename):
     if os.path.isfile(filename):
-        logging.info("Loading Cached graph from f{filename}")
+        logging.info("Loading Cached graph from %s", filename)
         return ox.load_graphml(filename)
     else:
         return None
@@ -86,25 +92,17 @@ def main():
     else:
         G = ox.graph_from_place(place, network_type=args.type, retain_all=False)
         cache_graph(G, filename)
-    closest_to_edge = work_out_edges(G, gdf, args.buffer)
+    closest_to_edge = set(work_out_edges(G, gdf, args.buffer))
 
     routes = []
-    calculation = list(itertools.combinations(set(closest_to_edge), 2))
-    threads = mp.cpu_count() - 1
-    logging.info("Total Calculations %s on %s cores", len(calculation), threads)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=mp.cpu_count() - 1) as e:
-        fut = [
-            e.submit(ox.shortest_path, G, x[0], x[1], weight="length")
-            for x in calculation
-        ]
-        for i, r in enumerate(concurrent.futures.as_completed(fut)):
-            logging.info(
-                "Calculated the shortest path: %s of total calculation: %s",
-                i,
-                len(calculation),
-            )
-            if is_route_straight(route=r.result(), G=G):
-                routes.append(r.result())
+    threads= mp.cpu_count() - 1
+    calculations = list(itertools.combinations(closest_to_edge, 2))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as e:
+        shortest_straightest_partial = partial(shortest_staightest, G)
+        for count, route in enumerate(e.map(shortest_straightest_partial, calculations)):
+            if route:
+                routes.append(route)
+            logging.info("Completed %s of %s",count,len(calculations))
 
     routes.sort(
         key=lambda route: sum(
@@ -113,7 +111,7 @@ def main():
         reverse=True,
     )
     if args.np:
-        display(routes[:3], G, gdf, closest_to_edge, args.display_edges, place)
+        display(routes[:3], G, gdf, closest_to_edge, args.dont_display_edges, place)
     write_gpx(routes[:3], place, G)
 
 
@@ -122,9 +120,9 @@ def parse_args():
     argParser.add_argument("-l", "--location", help="Location to straight line")
     argParser.add_argument(
         "-e",
-        "--display-edges",
-        help="Display the edge nodes we have found",
-        action="store_true",
+        "--dont-display-edges",
+        help="Don't display the edge nodes we have found",
+        action="store_false",
     )
     argParser.add_argument(
         "-t",
