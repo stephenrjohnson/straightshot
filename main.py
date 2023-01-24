@@ -61,14 +61,31 @@ def is_route_straight(route, G, tolerance=9):
             return False
     return True
 
+def cache_graph(G, filename):
+    if not os.path.exists("data"):
+        os.makedirs("data")
+    logging.info("Caching graph to f{filename}")
+    ox.save_graphml(G, filename)
 
+def load_cached_graph(filename):
+    if os.path.isfile(filename):
+        logging.info("Loading Cached graph from f{filename}")
+        return ox.load_graphml(filename)
+    else:
+        return None
+     
 def main():
     args = parse_args()
-    place = args.location
+    place = args.location.strip()
+    filename = f"./data/${place}_{args.type}.graphml"
     logging.info("Generating strightline for %s", place)
     ox.config(log_console=True)
     gdf = ox.geocode_to_gdf(place)
-    G = ox.graph_from_place(place, network_type=args.type, retain_all=False)
+    if os.path.isfile(filename):
+        G = load_cached_graph(filename) 
+    else:
+        G = ox.graph_from_place(place, network_type=args.type, retain_all=False)
+        cache_graph(G, filename)
     closest_to_edge = work_out_edges(G, gdf, args.buffer)
 
     routes = []
