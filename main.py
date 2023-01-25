@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.INFO)
 import multiprocessing as mp
 
 from gpxpy.gpx import GPX, GPXTrack, GPXTrackPoint, GPXTrackSegment
-from shapely.geometry import MultiPolygon, Point
+from shapely.geometry import MultiPolygon, Point, Polygon
 
 
 def display(routes, G, gdf, edgenodes, displyedgenodes, place):
@@ -115,8 +115,14 @@ def main():
     else:
         G = ox.graph_from_place(place, network_type=args.type, retain_all=False)
         cache_graph(G, filename)
-    closest_to_edge = work_out_edges(G, gdf, args.buffer)
-    routes = calulate_routes(closest_to_edge, G)
+    if type(gdf.geometry[0]) == MultiPolygon:
+        exterior = gdf.geometry[0].geoms[0]
+    else:
+        exterior = gdf.geometry[0]
+    corners_nodes = get_corners_nodes(G, exterior)
+    closest_to_edge = work_out_edges(G, exterior, args.buffer)
+    nodestoroute = closest_to_edge.union(corners_nodes)
+    routes = calulate_routes(nodestoroute, G)
     routes.sort(
         key=lambda route: sum(
             ox.utils_graph.get_route_edge_attributes(G, route, attribute="length")
@@ -124,7 +130,7 @@ def main():
         reverse=True,
     )
     if args.np:
-        display(routes[:3], G, gdf, closest_to_edge, args.dont_display_edges, place)
+        display(routes[:3], G, gdf, nodestoroute, args.dont_display_edges, place)
     write_gpx(routes[:3], place, G)
 
 
@@ -165,15 +171,18 @@ def close_to_edge(node, data, buffer):
         return None
 
 
-def work_out_edges(G, gdf, edgebuffer):
-    if type(gdf.geometry[0]) == MultiPolygon:
-        exteriror = gdf.geometry[0].geoms[0]
-    else:
-        exteriror = gdf.geometry[0]
+def get_corners_nodes(G, exterior) -> set:
+    cords = [x for x in exterior.bounds]
+    cornernodes = set()
+    for corner in list(itertools.combinations(set(cords), 2)):
+        cornernodes.add(ox.nearest_nodes(G, corner[0], corner[1]))
+    return cornernodes
 
+
+def work_out_edges(G, exterior, edgebuffer) -> set:
     # Find the closest nodes to the boundary of the place
-    # closest_to_edge = set(ox.nearest_nodes(G, *exteriror.exterior.coords.xy))
-    buffer = exteriror.exterior.buffer(edgebuffer)
+    # closest_to_edge = set(ox.nearest_nodes(G, *exterior.exterior.coords.xy))
+    buffer = exterior.exterior.buffer(edgebuffer)
     closest_to_edge = set()
     with concurrent.futures.ThreadPoolExecutor(max_workers=mp.cpu_count() - 1) as e:
         fut = [
@@ -191,7 +200,7 @@ def work_out_edges(G, gdf, edgebuffer):
         return closest_to_edge
     else:
         logging.info("Doubling buffer to find more at end")
-        return work_out_edges(G, gdf, edgebuffer=edgebuffer * 2)
+        return work_out_edges(G, exterior, edgebuffer=edgebuffer * 2)
 
 
 def write_gpx(routes, place, G):
