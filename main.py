@@ -172,9 +172,10 @@ def close_to_edge(node, data, buffer):
 
 
 def get_corners_nodes(G, exterior) -> set:
-    cords = [x for x in exterior.bounds]
+    bounds =  exterior.bounds
+    corners = [(bounds[0],bounds[1]),(bounds[0],bounds[3]),(bounds[1],bounds[0]),(bounds[1],bounds[1])]
     cornernodes = set()
-    for corner in list(itertools.combinations(set(cords), 2)):
+    for corner in corners:
         cornernodes.add(ox.nearest_nodes(G, corner[0], corner[1]))
     return cornernodes
 
